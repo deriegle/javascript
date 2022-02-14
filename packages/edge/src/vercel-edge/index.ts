@@ -1,19 +1,12 @@
-import type { JWTPayload } from '@clerk/backend-core';
+import { AuthStatus, Base } from '@clerk/backend-core';
+import { NextResponse } from 'next/server';
+
+import { ClerkAPI } from './ClerkAPI';
 import {
-  AuthStatus,
-  Base,
-  ClerkBackendAPI,
-  Session,
-} from '@clerk/backend-core';
-import { NextFetchEvent, NextRequest, NextResponse } from 'next/server';
-
-import { PACKAGE_REPO } from './constants';
-import { LIB_NAME, LIB_VERSION } from './info';
-
-type Middleware = (
-  req: NextRequest,
-  event: NextFetchEvent,
-) => Response | void | Promise<Response | void>;
+  WithAuthNextMiddlewareHandler,
+  WithAuthMiddlewareCallback,
+} from './types';
+import { getAuthData } from './utils/getAuthData';
 
 /**
  *
@@ -51,23 +44,7 @@ export const verifySessionToken = vercelEdgeBase.verifySessionToken;
 
 /** Export ClerkBackendAPI API client */
 
-export const ClerkAPI = new ClerkBackendAPI({
-  libName: LIB_NAME,
-  libVersion: LIB_VERSION,
-  packageRepo: PACKAGE_REPO,
-  fetcher: (url, { method, authorization, contentType, userAgent, body }) => {
-    return fetch(url, {
-      method,
-      headers: {
-        authorization: authorization,
-        'Content-Type': contentType,
-        'User-Agent': userAgent,
-        'X-Clerk-SDK': `vercel-edge/${LIB_VERSION}`,
-      },
-      ...(body && { body: JSON.stringify(body) }),
-    }).then(body => (contentType === 'text/html' ? body : body.json()));
-  },
-});
+export { ClerkAPI } from './ClerkAPI';
 
 async function fetchInterstitial() {
   const response = await ClerkAPI.fetchInterstitial<Response>();
@@ -76,21 +53,22 @@ async function fetchInterstitial() {
 
 /** Export middleware wrapper */
 
-export type NextRequestWithAuth = NextRequest & {
-  session?: Session;
-  sessionClaims?: JWTPayload;
-};
-
-export type MiddlewareOptions = {
+type WithAuthOptions = {
   authorizedParties?: string[];
+  loadUser?: boolean;
+  loadSession?: boolean;
 };
 
 export function withAuth(
-  handler: Middleware,
-  { authorizedParties }: MiddlewareOptions = { authorizedParties: [] },
-) {
-  return async function clerkAuth(req: NextRequest, event: NextFetchEvent) {
-    const { status, session, interstitial, sessionClaims } =
+  handler: WithAuthNextMiddlewareHandler<WithAuthOptions>,
+  options: WithAuthOptions = {
+    authorizedParties: [],
+    loadSession: false,
+    loadUser: false,
+  },
+): WithAuthNextMiddlewareHandler {
+  return async function clerkAuth(req, event) {
+    const { status, interstitial, sessionClaims } =
       await vercelEdgeBase.getAuthState({
         cookieToken: req.cookies['__session'],
         clientUat: req.cookies['__client_uat'],
@@ -101,7 +79,7 @@ export function withAuth(
         forwardedPort: req.headers.get('x-forwarded-port'),
         forwardedHost: req.headers.get('x-forwarded-host'),
         referrer: req.headers.get('referrer'),
-        authorizedParties: authorizedParties,
+        authorizedParties: options.authorizedParties,
         fetchInterstitial,
       });
 
@@ -117,11 +95,16 @@ export function withAuth(
     }
 
     if (status === AuthStatus.SignedIn) {
-      // @ts-ignore
+      const { auth, user, session } = await getAuthData(req, {
+        ...sessionClaims,
+        options,
+      });
+
+      req.auth = auth;
+      req.user = user;
       req.session = session;
-      // @ts-ignore
-      req.sessionClaims = sessionClaims;
-      return handler(req, event);
+
+      return await handler(req, event);
     }
   };
 }
