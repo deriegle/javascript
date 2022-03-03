@@ -3,8 +3,6 @@ import cookie from 'cookie';
 import { AuthData } from './getAuthData';
 import { LoaderFunctionArgs, LoaderFunctionArgsWithAuth } from './types';
 
-const INTER_HTML_CONTENT_REGEX = /<html>([\s\S.]*)<\/html>/;
-
 /**
  * Wraps obscured clerk internals with a readable `clerkState` key.
  * This is intended to be passed by the user into <ClerkProvider>
@@ -13,19 +11,6 @@ const INTER_HTML_CONTENT_REGEX = /<html>([\s\S.]*)<\/html>/;
  */
 export const wrapClerkState = (data: any) => {
   return { clerkState: { __internal_clerk_state: { ...data } } };
-};
-
-/**
- * Extracts the content inside the <html> tags of the interstitial page
- *
- * @internal
- */
-export const extractInterstitialHtmlContent = (interstitial?: string) => {
-  try {
-    return (interstitial || '').match(INTER_HTML_CONTENT_REGEX)![1];
-  } catch (e) {
-    throw new Error('This is a Clerk bug; Please report');
-  }
 };
 
 /**

@@ -28,10 +28,10 @@ export async function rootAuthLoader(
 
   const frontendApi = process.env.CLERK_FRONTEND_API || opts.frontendApi;
 
-  const { authData, interstitial } = await getAuthData(args.request, opts);
+  const { authData, showInterstitial } = await getAuthData(args.request, opts);
 
-  if (interstitial) {
-    throw json(wrapClerkState({ __clerk_ssr_interstitial: interstitial }));
+  if (showInterstitial) {
+    throw json(wrapClerkState({ __clerk_ssr_interstitial: showInterstitial, __frontendApi: frontendApi }));
   }
 
   if (!callback) {
